@@ -11,11 +11,15 @@
 std::vector<Car> initHighway(bool renderScene, pcl::visualization::PCLVisualizer::Ptr& viewer)
 {
 
-    Car egoCar( Vect3(0,0,0), Vect3(4,2,2), Color(0,1,0), "egoCar");
-    Car car1( Vect3(15,0,0), Vect3(4,2,2), Color(0,0,1), "car1");
-    Car car2( Vect3(8,-4,0), Vect3(4,2,2), Color(0,0,1), "car2");	
-    Car car3( Vect3(-12,4,0), Vect3(4,2,2), Color(0,0,1), "car3");
-  
+    Car egoCar( Vect3(0,0,0), Vect3(4,2,2),
+                Color(0,1,0), "egoCar");
+    Car car1( Vect3(15,0,0), Vect3(4,2,2),
+              Color(0,0,1), "car1");
+    Car car2( Vect3(8,-4,0), Vect3(4,2,2),
+              Color(0,0,1), "car2");
+    Car car3( Vect3(-12,4,0), Vect3(4,2,2),
+              Color(0,0,1), "car3");
+
     std::vector<Car> cars;
     cars.push_back(egoCar);
     cars.push_back(car1);
@@ -40,15 +44,22 @@ void simpleHighway(pcl::visualization::PCLVisualizer::Ptr& viewer)
     // ----------------------------------------------------
     // -----Open 3D viewer and display simple highway -----
     // ----------------------------------------------------
-    
-    // RENDER OPTIONS
-    bool renderScene = true;
-    std::vector<Car> cars = initHighway(renderScene, viewer);
-    
-    // TODO:: Create lidar sensor 
 
+    // RENDER OPTIONS
+    bool renderScene = false;
+    std::vector<Car> cars = initHighway(renderScene, viewer);
+
+    // Create lidar sensor (on heap)
+    auto lidar = new Lidar(cars, 0.0);
+    auto inputCloud = lidar->scan();
+    // lidar has position (0, 0, 2.6)!
+//    renderRays(viewer, lidar->position, inputCloud);
+//    renderPointCloud(viewer, inputCloud, "inputCloud");
     // TODO:: Create point processor
-  
+    ProcessPointClouds<pcl::PointXYZ> pointProcessor;
+    auto segmentCloud = pointProcessor.SegmentPlane(inputCloud, 100, 0.2);
+    renderPointCloud(viewer, segmentCloud.first, "obstCloud", Color(1,0,0));
+    renderPointCloud(viewer, segmentCloud.second, "planeCloud", Color(0,1,0));
 }
 
 
@@ -57,12 +68,12 @@ void initCamera(CameraAngle setAngle, pcl::visualization::PCLVisualizer::Ptr& vi
 {
 
     viewer->setBackgroundColor (0, 0, 0);
-    
+
     // set camera position and angle
     viewer->initCameraParameters();
     // distance away in meters
     int distance = 16;
-    
+
     switch(setAngle)
     {
         case XY : viewer->setCameraPosition(-distance, -distance, distance, 1, 1, 0); break;
@@ -80,6 +91,7 @@ int main (int argc, char** argv)
 {
     std::cout << "starting enviroment" << std::endl;
 
+    // pcl viewerを作る
     pcl::visualization::PCLVisualizer::Ptr viewer (new pcl::visualization::PCLVisualizer ("3D Viewer"));
     CameraAngle setAngle = XY;
     initCamera(setAngle, viewer);
@@ -88,5 +100,5 @@ int main (int argc, char** argv)
     while (!viewer->wasStopped ())
     {
         viewer->spinOnce ();
-    } 
+    }
 }
