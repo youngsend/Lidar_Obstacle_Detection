@@ -66,7 +66,8 @@ void simpleHighway(pcl::visualization::PCLVisualizer::Ptr& viewer)
     // Clustering obstacle cloud
     auto cloudClusters = pointProcessor.Clustering(segmentCloud.first, 1.0, 3, 30);
     int clusterId = 0;
-    std::vector<Color> colors = {Color(1,0,0), Color(0,1,0), Color(0,0,1)};
+    std::vector<Color> colors = {Color(1,0,0), Color(0,1,0),
+                                 Color(0,0,1)};
 
     for(const auto& cluster : cloudClusters){
         std::cout << "cluster size";
@@ -88,7 +89,29 @@ void cityBlock(pcl::visualization::PCLVisualizer::Ptr& viewer){
     auto filtered_cloud = point_processor.FilterCloud(input_cloud, 0.1f,
                                                       Eigen::Vector4f(-10, -6, -2, 1),
                                                       Eigen::Vector4f(30, 8, 1, 1));
-    renderPointCloud(viewer, filtered_cloud, "filtered_cloud");
+//    renderPointCloud(viewer, filtered_cloud, "filtered_cloud");
+    // step 1: segment road and obstacles
+    auto segment_cloud = point_processor.SegmentPlane(filtered_cloud, 100, 0.2);
+//    renderPointCloud(viewer, segment_cloud.first, "obstacle_cloud", Color(1,0,0));
+    renderPointCloud(viewer, segment_cloud.second, "plane_cloud", Color(0,1,0));
+
+    // step 2: cluster the obstacle cloud and find bounding boxes for them
+    auto cloud_clusters = point_processor.Clustering(segment_cloud.first, 0.8, 50, 1500);
+    int cluster_id = 0;
+    std::vector<Color> colors = {Color(1,0,0),
+                                 Color(1,1,0),
+                                 Color(0,0,1)};
+    for(const auto& cloud_cluster : cloud_clusters){
+        std::cout << "cluster size: ";
+        point_processor.numPoints(cloud_cluster);
+        renderPointCloud(viewer, cloud_cluster, "obstacle_cloud"+std::to_string(cluster_id),
+                         colors[cluster_id%(colors.size())]);
+
+        Box box = point_processor.BoundingBox(cloud_cluster);
+        renderBox(viewer, box, cluster_id);
+
+        ++cluster_id;
+    }
 }
 
 //setAngle: SWITCH CAMERA ANGLE {XY, TopDown, Side, FPS}
@@ -121,7 +144,7 @@ int main (int argc, char** argv)
 
     // pcl viewerを作る
     pcl::visualization::PCLVisualizer::Ptr viewer (new pcl::visualization::PCLVisualizer ("3D Viewer"));
-    CameraAngle setAngle = TopDown;
+    CameraAngle setAngle = Side;
     initCamera(setAngle, viewer);
     cityBlock(viewer);
 
