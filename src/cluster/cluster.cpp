@@ -94,8 +94,7 @@ void proximity(std::unordered_set<int>& processed_ids, const std::vector<std::ve
 }
 
 std::vector<std::vector<int>> euclideanCluster(const std::vector<std::vector<float>>& points, KdTree* tree,
-                                               float distanceTol)
-{
+                                               float distanceTol){
     // Fill out this function to return list of indices for each cluster
     std::vector<std::vector<int>> clusters;
     std::unordered_set<int> processed_ids;
