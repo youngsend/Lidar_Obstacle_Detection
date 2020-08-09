@@ -122,7 +122,7 @@ std::vector<typename pcl::PointCloud<PointT>::Ptr> ProcessPointClouds<PointT>::C
     // Time clustering process
     auto startTime = std::chrono::steady_clock::now();
     // construction of kd-tree
-    KdTree<PointT>* tree = new KdTree<PointT>();
+    KdTree<PointT>* tree(new KdTree<PointT>());
 
     // decide the insert order.
     auto insert_order = GetInsertOrder(cloud);
