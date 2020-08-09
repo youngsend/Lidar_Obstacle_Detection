@@ -1,10 +1,5 @@
 /* \author Aaron Brown */
-// Quiz on implementing simple RANSAC line fitting
-
-#include <chrono>
-#include <string>
-#include <unordered_set>
-#include "kdtree.h"
+#include "cluster.h"
 
 void proximity(std::unordered_set<int>& processed_ids, const std::vector<std::vector<float>>& points,
                std::vector<int>& cluster_ids, int index, KdTree* tree, float distanceTol) {
@@ -31,5 +26,4 @@ std::vector<std::vector<int>> euclideanCluster(const std::vector<std::vector<flo
         }
     }
     return clusters;
-
 }
