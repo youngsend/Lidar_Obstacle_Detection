@@ -13,10 +13,8 @@ void cityBlock(pcl::visualization::PCLVisualizer::Ptr& viewer, ProcessPointCloud
     auto filtered_cloud = point_processor.FilterCloud(input_cloud, 0.1f,
                                                       Eigen::Vector4f(-10, -6, -2, 1),
                                                       Eigen::Vector4f(30, 7, 1, 1));
-//    renderPointCloud(viewer, filtered_cloud, "filtered_cloud");
     // step 1: segment road and obstacles
     auto segment_cloud = point_processor.SegmentPlane(filtered_cloud, 100, 0.2);
-//    renderPointCloud(viewer, segment_cloud.first, "obstacle_cloud", Color(1,0,0));
     renderPointCloud(viewer, segment_cloud.second, "plane_cloud", Color(0,1,0));
 
     // step 2: cluster the obstacle cloud and find bounding boxes for them
@@ -26,8 +24,8 @@ void cityBlock(pcl::visualization::PCLVisualizer::Ptr& viewer, ProcessPointCloud
                                  Color(1,1,0),
                                  Color(0,0,1)};
     for(const auto& cloud_cluster : cloud_clusters){
-//        std::cout << "cluster size: ";
-//        point_processor.numPoints(cloud_cluster);
+        std::cout << "cluster size: ";
+        point_processor.numPoints(cloud_cluster);
         renderPointCloud(viewer, cloud_cluster, "obstacle_cloud"+std::to_string(cluster_id),
                          colors[cluster_id%(colors.size())]);
 
@@ -82,7 +80,7 @@ int main (int argc, char** argv)
         viewer->removeAllShapes();
 
         // load pcd and run obstacle detection process
-        auto input_cloud = point_processor.loadPcd((*stream_iterator).string());
+        auto input_cloud = point_processor.LoadPcd((*stream_iterator).string());
         cityBlock(viewer, point_processor, input_cloud);
 
         stream_iterator++;

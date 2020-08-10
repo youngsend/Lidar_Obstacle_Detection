@@ -58,9 +58,9 @@ public:
 
     Box BoundingBox(typename pcl::PointCloud<PointT>::Ptr cluster);
 
-    void savePcd(typename pcl::PointCloud<PointT>::Ptr cloud, std::string file);
+    void SavePcd(typename pcl::PointCloud<PointT>::Ptr cloud, std::string file);
 
-    typename pcl::PointCloud<PointT>::Ptr loadPcd(std::string file);
+    typename pcl::PointCloud<PointT>::Ptr LoadPcd(std::string file);
 
     std::vector<boost::filesystem::path> streamPcd(std::string dataPath);
 
@@ -73,8 +73,7 @@ public:
                                                    int minSize,
                                                    int maxSize);
 
-    std::vector<int> GetInsertOrder(const typename pcl::PointCloud<PointT>::Ptr& cloud);
-
+    // Ransac using CountWithinDistance and SelectWithinDistance.
     std::vector<int> Ransac(const typename pcl::PointCloud<PointT>::Ptr& cloud,
                             int maxIterations,
                             float distanceTol);
@@ -85,8 +84,18 @@ public:
     std::pair<int, Coefficient> CountWithinDistance(const typename pcl::PointCloud<PointT>::Ptr& cloud,
                                                     float distanceTolerance);
 
+    // Get indices of those points which are within distanceTolerance from the plane.
+    // The plane is specified by coefficient.
     std::vector<int> SelectWithinDistance(const typename pcl::PointCloud<PointT>::Ptr& cloud,
                                           float distanceTolerance,
-                                          Coefficient coefficient);
+                                          const Coefficient& coefficient);
+
+    // recursive function to sort left lists and right lists recursively.
+    void BuildHelper(int depth,
+                     const typename pcl::PointCloud<PointT>::Ptr& cloud,
+                     std::vector<int>& indices,
+                     int beginIndex,
+                     int endIndex,
+                     KdTree<PointT>* kdTree);
 };
 #endif /* PROCESSPOINTCLOUDS_H_ */

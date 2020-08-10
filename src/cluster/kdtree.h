@@ -22,9 +22,8 @@ struct KdTree
 {
     Node<PointT>* root;
 
-    KdTree()
-            : root(nullptr)
-    {}
+    KdTree() : root(nullptr) {
+    }
 
     static void insertHelper(Node<PointT> **node, PointT point, int id, int depth) {
         if (!(*node)) {

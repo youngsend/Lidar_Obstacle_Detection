@@ -12,7 +12,7 @@ typename pcl::PointCloud<PointT>::Ptr ProcessPointClouds<PointT>::FilterCloud(
         typename pcl::PointCloud<PointT>::Ptr cloud, float filterRes, Eigen::Vector4f minPoint,
         Eigen::Vector4f maxPoint){
     // Time segmentation process
-//    auto startTime = std::chrono::steady_clock::now();
+    auto startTime = std::chrono::steady_clock::now();
 
     // Fill in the function to do voxel grid point reduction and region based filtering
     // Voxel grid filtering
@@ -49,9 +49,9 @@ typename pcl::PointCloud<PointT>::Ptr ProcessPointClouds<PointT>::FilterCloud(
     extract.setNegative(true);
     extract.filter(*cloud_cropped);
 
-//    auto endTime = std::chrono::steady_clock::now();
-//    auto elapsedTime = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
-//    std::cout << "filtering took " << elapsedTime.count() << " milliseconds" << std::endl;
+    auto endTime = std::chrono::steady_clock::now();
+    auto elapsedTime = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
+    std::cout << "filtering took " << elapsedTime.count() << " milliseconds" << std::endl;
 
     return cloud_cropped;
 }
@@ -101,11 +101,7 @@ ProcessPointClouds<PointT>::SegmentPlane(typename pcl::PointCloud<PointT>::Ptr c
     pcl::PointIndices::Ptr inliers (new pcl::PointIndices());
 
     // measure ransac time
-    auto start_ransac = std::chrono::steady_clock::now();
     inliers->indices = Ransac(cloud, maxIterations, distanceThreshold);
-    auto end_time_ransac = std::chrono::steady_clock::now();
-    auto elapsed_time_ransac = std::chrono::duration_cast<std::chrono::milliseconds>(end_time_ransac - start_ransac);
-    std::cout << "ransac took " << elapsed_time_ransac.count() << " milliseconds\n";
 
     if (inliers->indices.empty()){
         std::cerr << "Could not estimate a planar model for the given dataset." << std::endl;
@@ -128,28 +124,16 @@ std::vector<typename pcl::PointCloud<PointT>::Ptr> ProcessPointClouds<PointT>::C
     // construction of kd-tree
     KdTree<PointT>* tree(new KdTree<PointT>());
 
-    // decide the insert order.
-    // measure time consumed by GetInsertOrder
-    auto start_insert_order = std::chrono::steady_clock::now();
-    auto insert_order = GetInsertOrder(cloud);
-    auto end_insert_order = std::chrono::steady_clock::now();
-    auto elapsed_insert_order = std::chrono::duration_cast<std::chrono::milliseconds>(
-            end_insert_order - start_insert_order);
-    std::cout << "GetInsertOrder took " << elapsed_insert_order.count() << " milliseconds\n";
-
     // insert point in cloud into kd-tree
-    for(auto id : insert_order){
-        tree->insert(cloud->points[id], id);
-    }
+    std::vector<int> indices(cloud->points.size());
+    std::iota(indices.begin(), indices.end(), 0);
+    BuildHelper(0, cloud, indices, 0, cloud->points.size()-1, tree);
+//    for(int index = 0; index < cloud->points.size(); index++) {
+//        tree->insert(cloud->points[index], index);
+//    }
 
     // cluster cloud by searching kd-tree
-    // measure euclidean clustering time
-    auto start_euclidean_cluster = std::chrono::steady_clock::now();
     auto clusters_indices = euclideanCluster(cloud, tree, clusterTolerance, minSize, maxSize);
-    auto end_euclidean_cluster = std::chrono::steady_clock::now();
-    auto elapsed_euclidean_cluster = std::chrono::duration_cast<std::chrono::milliseconds>(
-            end_euclidean_cluster - start_euclidean_cluster);
-    std::cout << "Euclidean cluster took " << elapsed_euclidean_cluster.count() << " milliseconds\n";
 
     // create point cloud for each cluster.
     std::vector<typename pcl::PointCloud<PointT>::Ptr> clusters;
@@ -190,13 +174,13 @@ Box ProcessPointClouds<PointT>::BoundingBox(typename pcl::PointCloud<PointT>::Pt
 }
 
 template<typename PointT>
-void ProcessPointClouds<PointT>::savePcd(typename pcl::PointCloud<PointT>::Ptr cloud, std::string file){
+void ProcessPointClouds<PointT>::SavePcd(typename pcl::PointCloud<PointT>::Ptr cloud, std::string file){
     pcl::io::savePCDFileASCII (file, *cloud);
     std::cerr << "Saved " << cloud->points.size () << " data points to "+file << std::endl;
 }
 
 template<typename PointT>
-typename pcl::PointCloud<PointT>::Ptr ProcessPointClouds<PointT>::loadPcd(std::string file){
+typename pcl::PointCloud<PointT>::Ptr ProcessPointClouds<PointT>::LoadPcd(std::string file){
     typename pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
 
     if (pcl::io::loadPCDFile<PointT> (file, *cloud) == -1) //* load the file
@@ -294,57 +278,6 @@ static int GetMedian(const std::vector<bool>& processed, const std::vector<int>&
 }
 
 template <typename PointT>
-std::vector<int> ProcessPointClouds<PointT>::GetInsertOrder(const typename pcl::PointCloud<PointT>::Ptr& cloud){
-    auto& points = cloud->points;
-
-    std::vector<bool> processed(points.size(), false);
-    std::vector<int> x_order(points.size());
-    std::iota(x_order.begin(), x_order.end(), 0);
-    std::vector<int> y_order(points.size());
-    std::iota(y_order.begin(), y_order.end(), 0);
-    std::vector<int> z_order(points.size());
-    std::iota(z_order.begin(), z_order.end(), 0);
-
-    // sort by x, y and z respectively.
-    std::sort(x_order.begin(), x_order.end(), [&](int a, int b){
-        return points[a].x < points[b].x;
-    });
-    std::sort(y_order.begin(), y_order.end(), [&](int a, int b){
-        return points[a].y < points[b].y;
-    });
-    std::sort(z_order.begin(), z_order.end(), [&](int a, int b){
-        return points[a].z < points[b].z;
-    });
-
-    // get x_order, y_order, z_order's median again and again
-    int number_inserted = 0;
-    int dimension = 3;
-    std::vector<int> insert_order;
-    while (number_inserted < points.size()){
-        int median_index = (points.size() - number_inserted) / 2;
-        int mod_index = number_inserted % dimension;
-        int median = -1;
-        if (mod_index==0) {
-            // time to insert x median
-            median = GetMedian(processed, x_order, median_index);
-        } else if(mod_index == 1) {
-            median = GetMedian(processed, y_order, median_index);
-        } else {
-            median = GetMedian(processed, z_order, median_index);
-        }
-        if (median == -1) {
-            std::cerr << "Median not found! median_index: " << median_index << std::endl;
-            break;
-        }
-        insert_order.push_back(median);
-        processed[median] = true;
-        number_inserted++;
-    }
-
-    return insert_order;
-}
-
-template <typename PointT>
 std::pair<int, Coefficient> ProcessPointClouds<PointT>::CountWithinDistance(
         const typename pcl::PointCloud<PointT>::Ptr& cloud,
         float distanceTolerance){
@@ -407,7 +340,7 @@ template <typename PointT>
 std::vector<int> ProcessPointClouds<PointT>::SelectWithinDistance(
         const typename pcl::PointCloud<PointT>::Ptr& cloud,
         float distanceTolerance,
-        Coefficient coefficient){
+        const Coefficient& coefficient){
     std::vector<int> indices;
 
     float a = coefficient.a;
@@ -428,4 +361,45 @@ std::vector<int> ProcessPointClouds<PointT>::SelectWithinDistance(
     }
 
     return indices;
+}
+
+/**
+ * Help to sort vector and insert the median and recursively process left list and right list.
+ * Important to check two things. First, whether the tree size equals to cloud size.
+ * Second, whether points in cloud are inserted uniquely into tree.
+ * @tparam PointT
+ * @param depth
+ * @param cloud
+ * @param indices
+ * @param beginIndex
+ * @param endIndex
+ * @param kdTree
+ */
+template <typename PointT>
+void ProcessPointClouds<PointT>::BuildHelper(int depth,
+                                             const typename pcl::PointCloud<PointT>::Ptr& cloud,
+                                             std::vector<int>& indices,
+                                             int beginIndex,
+                                             int endIndex,
+                                             KdTree<PointT>* kdTree){
+    if (endIndex < beginIndex)
+        return;
+    else if(endIndex == beginIndex) {
+        kdTree->insert(cloud->points[indices[beginIndex]], indices[beginIndex]);
+    } else {
+        // when size of vector is larger or equal to 2, sort it by depth%3
+        std::sort(indices.begin()+beginIndex, indices.begin()+endIndex+1, [&](int a, int b){
+            return (cloud->points[a]).data[depth%3] < (cloud->points[b]).data[depth%3];
+        });
+        int median_index = beginIndex + (endIndex-beginIndex+1)/2;
+        int median_value = indices[median_index];
+
+        // insert the median point sorted by depth%3
+        kdTree->insert(cloud->points[median_value], median_value);
+
+        // process the left half and right half respectively.
+        // sort does not include end iterator, so pass medianIt rather than medianIt-1.
+        BuildHelper(depth+1, cloud, indices, beginIndex, median_index-1, kdTree);
+        BuildHelper(depth+1, cloud, indices, median_index+1, endIndex, kdTree);
+    }
 }
