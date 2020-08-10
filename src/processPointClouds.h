@@ -62,12 +62,12 @@ public:
 
     typename pcl::PointCloud<PointT>::Ptr LoadPcd(std::string file);
 
-    std::vector<boost::filesystem::path> streamPcd(std::string dataPath);
+    std::vector<boost::filesystem::path> StreamPcd(std::string dataPath);
 
-    void proximity(std::unordered_set<int>& processed_ids, const typename pcl::PointCloud<PointT>::Ptr& cloud,
+    void Proximity(std::unordered_set<int>& processed_ids, const typename pcl::PointCloud<PointT>::Ptr& cloud,
                    std::vector<int>& cluster_ids, int index, KdTree<PointT>* tree, float distanceTol);
 
-    std::vector<std::vector<int>> euclideanCluster(const typename pcl::PointCloud<PointT>::Ptr& cloud,
+    std::vector<std::vector<int>> EuclideanCluster(const typename pcl::PointCloud<PointT>::Ptr& cloud,
                                                    KdTree<PointT>* tree,
                                                    float distanceTol,
                                                    int minSize,

@@ -70,7 +70,7 @@ int main (int argc, char** argv)
     initCamera(setAngle, viewer);
 
     ProcessPointClouds<pcl::PointXYZI> point_processor;
-    auto stream = point_processor.streamPcd("../src/sensors/data/pcd/data_1");
+    auto stream = point_processor.StreamPcd("../src/sensors/data/pcd/data_1");
     auto stream_iterator = stream.begin();
 
     while (!viewer->wasStopped ())

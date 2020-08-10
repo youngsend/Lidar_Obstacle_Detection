@@ -7,6 +7,17 @@ void ProcessPointClouds<PointT>::numPoints(typename pcl::PointCloud<PointT>::Ptr
     std::cout << cloud->points.size() << std::endl;
 }
 
+/**
+ * Filter out points in area where we are not interested.
+ * For example, the roof of ego car, the walls outside the road.
+ * And only
+ * @tparam PointT
+ * @param cloud
+ * @param filterRes
+ * @param minPoint
+ * @param maxPoint
+ * @return
+ */
 template<typename PointT>
 typename pcl::PointCloud<PointT>::Ptr ProcessPointClouds<PointT>::FilterCloud(
         typename pcl::PointCloud<PointT>::Ptr cloud, float filterRes, Eigen::Vector4f minPoint,
@@ -57,6 +68,7 @@ typename pcl::PointCloud<PointT>::Ptr ProcessPointClouds<PointT>::FilterCloud(
 }
 
 /**
+ * Separate one cloud into two using two groups of indices.
  * @tparam PointT
  * @param inliers
  * @param cloud
@@ -90,6 +102,15 @@ ProcessPointClouds<PointT>::SeparateClouds(pcl::PointIndices::Ptr inliers,
     return segResult;
 }
 
+/**
+ * Segment road plane from other obstacles.
+ * Obstacle cloud will be clustered further.
+ * @tparam PointT
+ * @param cloud
+ * @param maxIterations
+ * @param distanceThreshold
+ * @return
+ */
 template<typename PointT>
 std::pair<typename pcl::PointCloud<PointT>::Ptr, typename pcl::PointCloud<PointT>::Ptr>
 ProcessPointClouds<PointT>::SegmentPlane(typename pcl::PointCloud<PointT>::Ptr cloud, int maxIterations,
@@ -116,6 +137,16 @@ ProcessPointClouds<PointT>::SegmentPlane(typename pcl::PointCloud<PointT>::Ptr c
     return segResult;
 }
 
+/**
+ * Use cloud points to build a kd-tree and find clusters.
+ * For each cluster, create a point cloud.
+ * @tparam PointT
+ * @param cloud
+ * @param clusterTolerance
+ * @param minSize
+ * @param maxSize
+ * @return
+ */
 template<typename PointT>
 std::vector<typename pcl::PointCloud<PointT>::Ptr> ProcessPointClouds<PointT>::Clustering(
         typename pcl::PointCloud<PointT>::Ptr cloud, float clusterTolerance, int minSize, int maxSize){
@@ -128,12 +159,9 @@ std::vector<typename pcl::PointCloud<PointT>::Ptr> ProcessPointClouds<PointT>::C
     std::vector<int> indices(cloud->points.size());
     std::iota(indices.begin(), indices.end(), 0);
     BuildHelper(0, cloud, indices, 0, cloud->points.size()-1, tree);
-//    for(int index = 0; index < cloud->points.size(); index++) {
-//        tree->insert(cloud->points[index], index);
-//    }
 
     // cluster cloud by searching kd-tree
-    auto clusters_indices = euclideanCluster(cloud, tree, clusterTolerance, minSize, maxSize);
+    auto clusters_indices = EuclideanCluster(cloud, tree, clusterTolerance, minSize, maxSize);
 
     // create point cloud for each cluster.
     std::vector<typename pcl::PointCloud<PointT>::Ptr> clusters;
@@ -193,7 +221,7 @@ typename pcl::PointCloud<PointT>::Ptr ProcessPointClouds<PointT>::LoadPcd(std::s
 }
 
 template<typename PointT>
-std::vector<boost::filesystem::path> ProcessPointClouds<PointT>::streamPcd(std::string dataPath){
+std::vector<boost::filesystem::path> ProcessPointClouds<PointT>::StreamPcd(std::string dataPath){
     std::vector<boost::filesystem::path> paths(boost::filesystem::directory_iterator{dataPath},
                                                boost::filesystem::directory_iterator{});
 
@@ -203,6 +231,15 @@ std::vector<boost::filesystem::path> ProcessPointClouds<PointT>::streamPcd(std::
     return paths;
 }
 
+/**
+ * Call CountWithinDistance for maxIterations times, and record the plane model which have the most inliers.
+ * For the final best plane model, get a vector of cloud indices for its inliers.
+ * @tparam PointT
+ * @param cloud
+ * @param maxIterations
+ * @param distanceTol
+ * @return
+ */
 template<typename PointT>
 std::vector<int> ProcessPointClouds<PointT>::Ransac(const typename pcl::PointCloud<PointT>::Ptr& cloud,
                                                     int maxIterations, float distanceTol) {
@@ -225,8 +262,19 @@ std::vector<int> ProcessPointClouds<PointT>::Ransac(const typename pcl::PointClo
     return SelectWithinDistance(cloud, distanceTol, coefficient_best_plane);
 }
 
+/**
+ * Like a queue. For each point in the queue, find all points which are within distance tolerance.
+ * If the found points do not exist in the queue, insert them into queue.
+ * @tparam PointT
+ * @param processed_ids
+ * @param cloud
+ * @param cluster_ids
+ * @param index
+ * @param tree
+ * @param distanceTol
+ */
 template<typename PointT>
-void ProcessPointClouds<PointT>::proximity(std::unordered_set<int> &processed_ids,
+void ProcessPointClouds<PointT>::Proximity(std::unordered_set<int> &processed_ids,
                                            const typename pcl::PointCloud<PointT>::Ptr& cloud,
                                            std::vector<int> &cluster_ids,
                                            int index, KdTree<PointT> *tree, float distanceTol) {
@@ -235,14 +283,27 @@ void ProcessPointClouds<PointT>::proximity(std::unordered_set<int> &processed_id
     auto nearby_points = tree->search(cloud->points[index], distanceTol);
     for (int nearby_index : nearby_points) {
         if (!processed_ids.count(nearby_index)) {
-            proximity(processed_ids, cloud, cluster_ids, nearby_index, tree, distanceTol);
+            Proximity(processed_ids, cloud, cluster_ids, nearby_index, tree, distanceTol);
         }
     }
 }
 
+/**
+ * Find all clusters in cloud whose size is between minSize and maxSize.
+ * Use Proximity function to collect points that belong to one cluster.
+ * After one Proximity execution, some points are marked as processed.
+ * For unprocessed points, new cluster will be initialized and filled with proximity function.
+ * @tparam PointT
+ * @param cloud
+ * @param tree
+ * @param distanceTol
+ * @param minSize
+ * @param maxSize
+ * @return
+ */
 template <typename PointT>
 std::vector<std::vector<int>>
-ProcessPointClouds<PointT>::euclideanCluster(const typename pcl::PointCloud<PointT>::Ptr& cloud,
+ProcessPointClouds<PointT>::EuclideanCluster(const typename pcl::PointCloud<PointT>::Ptr& cloud,
                                              KdTree<PointT>* tree,
                                              float distanceTol,
                                              int minSize,
@@ -253,7 +314,7 @@ ProcessPointClouds<PointT>::euclideanCluster(const typename pcl::PointCloud<Poin
     for (int index=0; index<cloud->points.size(); index++){
         if(!processed_ids.count(index)) {
             std::vector<int> cluster_ids;
-            proximity(processed_ids, cloud, cluster_ids, index, tree, distanceTol);
+            Proximity(processed_ids, cloud, cluster_ids, index, tree, distanceTol);
             if (minSize <= cluster_ids.size() && cluster_ids.size() <= maxSize) {
                 // add minSize and maxSize constraint.
                 clusters.push_back(cluster_ids);
@@ -263,20 +324,14 @@ ProcessPointClouds<PointT>::euclideanCluster(const typename pcl::PointCloud<Poin
     return clusters;
 }
 
-static int GetMedian(const std::vector<bool>& processed, const std::vector<int>& order, int median_index){
-    int count = 0;
-    for(auto cloud_point_index : order){
-        if(!processed[cloud_point_index]) {
-            count++;
-            // if median_index is 0, then only find 1 which has not been processed.
-            if (count == median_index+1) {
-                return cloud_point_index;
-            }
-        }
-    }
-    return -1;
-}
-
+/**
+ * Randomly select 3 points to form a plane model and count those points which are within distanceTolerance from
+ * the plane.
+ * @tparam PointT
+ * @param cloud
+ * @param distanceTolerance
+ * @return
+ */
 template <typename PointT>
 std::pair<int, Coefficient> ProcessPointClouds<PointT>::CountWithinDistance(
         const typename pcl::PointCloud<PointT>::Ptr& cloud,
