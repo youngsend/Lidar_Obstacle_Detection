@@ -22,6 +22,16 @@
 #include "render/box.h"
 #include "cluster/kdtree.h"
 
+// coefficients of ransac plane, used to record the plane model with the most inliers
+struct Coefficient {
+    float a;
+    float b;
+    float c;
+    float d;
+    Coefficient() : a(0.0f), b(0.0f), c(0.0f), d(0.0f) {}
+    Coefficient(float a, float b, float c, float d) : a(a), b(b), c(c), d(d) {}
+};
+
 template<typename PointT>
 class ProcessPointClouds {
 public:
@@ -54,10 +64,6 @@ public:
 
     std::vector<boost::filesystem::path> streamPcd(std::string dataPath);
 
-    std::unordered_set<int> Ransac(typename pcl::PointCloud<PointT>::Ptr cloud,
-                                   int maxIterations,
-                                   float distanceTol);
-
     void proximity(std::unordered_set<int>& processed_ids, const typename pcl::PointCloud<PointT>::Ptr& cloud,
                    std::vector<int>& cluster_ids, int index, KdTree<PointT>* tree, float distanceTol);
 
@@ -69,5 +75,18 @@ public:
 
     std::vector<int> GetInsertOrder(const typename pcl::PointCloud<PointT>::Ptr& cloud);
 
+    std::vector<int> Ransac(const typename pcl::PointCloud<PointT>::Ptr& cloud,
+                            int maxIterations,
+                            float distanceTol);
+
+    // I found that pcl separates countWithinDistance and selectWithinDistance for ransac.
+    // https://pointclouds.org/documentation/sac__model__line_8hpp_source.html
+    // I follow the same method so that I don't need to maintain an unordered_set for every iteration.
+    std::pair<int, Coefficient> CountWithinDistance(const typename pcl::PointCloud<PointT>::Ptr& cloud,
+                                                    float distanceTolerance);
+
+    std::vector<int> SelectWithinDistance(const typename pcl::PointCloud<PointT>::Ptr& cloud,
+                                          float distanceTolerance,
+                                          Coefficient coefficient);
 };
 #endif /* PROCESSPOINTCLOUDS_H_ */

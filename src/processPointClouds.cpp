@@ -12,7 +12,7 @@ typename pcl::PointCloud<PointT>::Ptr ProcessPointClouds<PointT>::FilterCloud(
         typename pcl::PointCloud<PointT>::Ptr cloud, float filterRes, Eigen::Vector4f minPoint,
         Eigen::Vector4f maxPoint){
     // Time segmentation process
-    auto startTime = std::chrono::steady_clock::now();
+//    auto startTime = std::chrono::steady_clock::now();
 
     // Fill in the function to do voxel grid point reduction and region based filtering
     // Voxel grid filtering
@@ -49,9 +49,9 @@ typename pcl::PointCloud<PointT>::Ptr ProcessPointClouds<PointT>::FilterCloud(
     extract.setNegative(true);
     extract.filter(*cloud_cropped);
 
-    auto endTime = std::chrono::steady_clock::now();
-    auto elapsedTime = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
-    std::cout << "filtering took " << elapsedTime.count() << " milliseconds" << std::endl;
+//    auto endTime = std::chrono::steady_clock::now();
+//    auto elapsedTime = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
+//    std::cout << "filtering took " << elapsedTime.count() << " milliseconds" << std::endl;
 
     return cloud_cropped;
 }
@@ -96,12 +96,16 @@ ProcessPointClouds<PointT>::SegmentPlane(typename pcl::PointCloud<PointT>::Ptr c
                                          float distanceThreshold) {
     // Time segmentation process
     auto startTime = std::chrono::steady_clock::now();
-    // Fill in this function to find inliers for the cloud.
-    auto inlier_id_set = Ransac(cloud, maxIterations, distanceThreshold);
 
     // insert unordered_set into vector
     pcl::PointIndices::Ptr inliers (new pcl::PointIndices());
-    (inliers->indices).insert((inliers->indices).end(), inlier_id_set.begin(), inlier_id_set.end());
+
+    // measure ransac time
+    auto start_ransac = std::chrono::steady_clock::now();
+    inliers->indices = Ransac(cloud, maxIterations, distanceThreshold);
+    auto end_time_ransac = std::chrono::steady_clock::now();
+    auto elapsed_time_ransac = std::chrono::duration_cast<std::chrono::milliseconds>(end_time_ransac - start_ransac);
+    std::cout << "ransac took " << elapsed_time_ransac.count() << " milliseconds\n";
 
     if (inliers->indices.empty()){
         std::cerr << "Could not estimate a planar model for the given dataset." << std::endl;
@@ -125,7 +129,13 @@ std::vector<typename pcl::PointCloud<PointT>::Ptr> ProcessPointClouds<PointT>::C
     KdTree<PointT>* tree(new KdTree<PointT>());
 
     // decide the insert order.
+    // measure time consumed by GetInsertOrder
+    auto start_insert_order = std::chrono::steady_clock::now();
     auto insert_order = GetInsertOrder(cloud);
+    auto end_insert_order = std::chrono::steady_clock::now();
+    auto elapsed_insert_order = std::chrono::duration_cast<std::chrono::milliseconds>(
+            end_insert_order - start_insert_order);
+    std::cout << "GetInsertOrder took " << elapsed_insert_order.count() << " milliseconds\n";
 
     // insert point in cloud into kd-tree
     for(auto id : insert_order){
@@ -133,7 +143,13 @@ std::vector<typename pcl::PointCloud<PointT>::Ptr> ProcessPointClouds<PointT>::C
     }
 
     // cluster cloud by searching kd-tree
+    // measure euclidean clustering time
+    auto start_euclidean_cluster = std::chrono::steady_clock::now();
     auto clusters_indices = euclideanCluster(cloud, tree, clusterTolerance, minSize, maxSize);
+    auto end_euclidean_cluster = std::chrono::steady_clock::now();
+    auto elapsed_euclidean_cluster = std::chrono::duration_cast<std::chrono::milliseconds>(
+            end_euclidean_cluster - start_euclidean_cluster);
+    std::cout << "Euclidean cluster took " << elapsed_euclidean_cluster.count() << " milliseconds\n";
 
     // create point cloud for each cluster.
     std::vector<typename pcl::PointCloud<PointT>::Ptr> clusters;
@@ -204,76 +220,25 @@ std::vector<boost::filesystem::path> ProcessPointClouds<PointT>::streamPcd(std::
 }
 
 template<typename PointT>
-std::unordered_set<int>
-ProcessPointClouds<PointT>::Ransac(typename pcl::PointCloud<PointT>::Ptr cloud, int maxIterations, float distanceTol) {
-    std::unordered_set<int> inliersResult;
+std::vector<int> ProcessPointClouds<PointT>::Ransac(const typename pcl::PointCloud<PointT>::Ptr& cloud,
+                                                    int maxIterations, float distanceTol) {
+    int max_count = -1;
+    Coefficient coefficient_best_plane;
 
-    // Will be used to obtain a seed for the random number engine
-    std::random_device rd;
-    // Standard mersenne_twister_engine seeded with rd()
-    std::mt19937 gen(rd());
-    std::uniform_int_distribution<> distrib(0, cloud->size()-1);
-
-    // For max iterations
-    // Randomly sample subset and fit line
-    // Measure distance between every point and fitted line
-    // If distance is smaller than threshold count it as inlier
-    // Return indicies of inliers from fitted line with most inliers
-    while (maxIterations--){
-        // temporary result set
-        std::unordered_set<int> tmpInliersResult;
-        // Get 3 different point indices.
-        while (tmpInliersResult.size() < 3) {
-            tmpInliersResult.insert(distrib(gen));
-        }
-
-        // Get the 3 selected points.
-        auto itr = tmpInliersResult.begin();
-        auto x1 = cloud->points[*itr].x;
-        auto y1 = cloud->points[*itr].y;
-        auto z1 = cloud->points[*itr].z;
-
-        itr++;
-        auto x2 = cloud->points[*itr].x;
-        auto y2 = cloud->points[*itr].y;
-        auto z2 = cloud->points[*itr].z;
-
-        itr++;
-        auto x3 = cloud->points[*itr].x;
-        auto y3 = cloud->points[*itr].y;
-        auto z3 = cloud->points[*itr].z;
-
-        // Calculate coefficients of plane
-        float i = (y2-y1)*(z3-z1) - (z2-z1)*(y3-y1);
-        float j = (z2-z1)*(x3-x1) - (x2-x1)*(z3-z1);
-        float k = (x2-x1)*(y3-y1) - (y2-y1)*(x3-x1);
-
-        float a = i;
-        float b = j;
-        float c = k;
-        float d = -(i*x1 + j*y1 + k*z1);
-
-        float gain = 1.0f / std::sqrt(a*a + b*b + c*c);
-        for (int point_index = 0; point_index < cloud->size(); point_index++) {
-            if(tmpInliersResult.count(point_index)) {
-                continue;
-            }
-
-            auto point = cloud->points[point_index];
-            // use fabs!
-            float distance = std::fabs(a * point.x + b * point.y + c * point.z + d) * gain;
-            if (distance <= distanceTol) {
-                tmpInliersResult.insert(point_index);
-            }
-        }
-
+    // find the best plane's coefficients.
+    while (maxIterations--) {
+        auto result = CountWithinDistance(cloud, distanceTol);
         // update inliersResult if more inliers recorded.
-        if (tmpInliersResult.size() > inliersResult.size()) {
-            inliersResult = tmpInliersResult;
+        if (result.first > max_count) {
+            coefficient_best_plane = result.second;
+
+            // update max_count!
+            max_count = result.first;
         }
     }
 
-    return inliersResult;
+    // use the best plane model to collect road plane indices.
+    return SelectWithinDistance(cloud, distanceTol, coefficient_best_plane);
 }
 
 template<typename PointT>
@@ -377,4 +342,90 @@ std::vector<int> ProcessPointClouds<PointT>::GetInsertOrder(const typename pcl::
     }
 
     return insert_order;
+}
+
+template <typename PointT>
+std::pair<int, Coefficient> ProcessPointClouds<PointT>::CountWithinDistance(
+        const typename pcl::PointCloud<PointT>::Ptr& cloud,
+        float distanceTolerance){
+    int count = 0;
+    // Will be used to obtain a seed for the random number engine
+    std::random_device rd;
+    // Standard mersenne_twister_engine seeded with rd()
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<> distrib(0, cloud->size()-1);
+
+    // use set to prevent same points.
+    std::set<int> tmpInliersResult;
+    // Get 3 different point indices.
+    while (tmpInliersResult.size() < 3) {
+        tmpInliersResult.insert(distrib(gen));
+    }
+
+    // Get the 3 selected points.
+    auto itr = tmpInliersResult.begin();
+    auto x1 = cloud->points[*itr].x;
+    auto y1 = cloud->points[*itr].y;
+    auto z1 = cloud->points[*itr].z;
+
+    itr++;
+    auto x2 = cloud->points[*itr].x;
+    auto y2 = cloud->points[*itr].y;
+    auto z2 = cloud->points[*itr].z;
+
+    itr++;
+    auto x3 = cloud->points[*itr].x;
+    auto y3 = cloud->points[*itr].y;
+    auto z3 = cloud->points[*itr].z;
+
+    // Calculate coefficients of plane
+    float i = (y2 - y1) * (z3 - z1) - (z2 - z1) * (y3 - y1);
+    float j = (z2 - z1) * (x3 - x1) - (x2 - x1) * (z3 - z1);
+    float k = (x2 - x1) * (y3 - y1) - (y2 - y1) * (x3 - x1);
+
+    float a = i;
+    float b = j;
+    float c = k;
+    float d = -(i * x1 + j * y1 + k * z1);
+
+    float gain = 1.0f / std::sqrt(a*a + b*b + c*c);
+    for (int point_index = 0; point_index < cloud->size(); point_index++) {
+        auto x4 = cloud->points[point_index].x;
+        auto y4 = cloud->points[point_index].y;
+        auto z4 = cloud->points[point_index].z;
+        // use fabs!
+        float distance = std::fabs(a*x4 + b*y4 + c*z4 + d) * gain;
+        if (distance <= distanceTolerance) {
+            count++;
+        }
+    }
+
+    return std::make_pair(count, Coefficient(a, b, c, d));
+}
+
+template <typename PointT>
+std::vector<int> ProcessPointClouds<PointT>::SelectWithinDistance(
+        const typename pcl::PointCloud<PointT>::Ptr& cloud,
+        float distanceTolerance,
+        Coefficient coefficient){
+    std::vector<int> indices;
+
+    float a = coefficient.a;
+    float b = coefficient.b;
+    float c = coefficient.c;
+    float d = coefficient.d;
+
+    float gain = 1.0f / std::sqrt(a*a + b*b + c*c);
+    for (int point_index = 0; point_index < cloud->size(); point_index++) {
+        auto x4 = cloud->points[point_index].x;
+        auto y4 = cloud->points[point_index].y;
+        auto z4 = cloud->points[point_index].z;
+        // use fabs!
+        float distance = std::fabs(a*x4 + b*y4 + c*z4 + d) * gain;
+        if (distance <= distanceTolerance) {
+            indices.push_back(point_index);
+        }
+    }
+
+    return indices;
 }

@@ -26,8 +26,8 @@ void cityBlock(pcl::visualization::PCLVisualizer::Ptr& viewer, ProcessPointCloud
                                  Color(1,1,0),
                                  Color(0,0,1)};
     for(const auto& cloud_cluster : cloud_clusters){
-        std::cout << "cluster size: ";
-        point_processor.numPoints(cloud_cluster);
+//        std::cout << "cluster size: ";
+//        point_processor.numPoints(cloud_cluster);
         renderPointCloud(viewer, cloud_cluster, "obstacle_cloud"+std::to_string(cluster_id),
                          colors[cluster_id%(colors.size())]);
 
